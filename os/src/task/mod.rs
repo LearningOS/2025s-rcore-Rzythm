@@ -19,7 +19,7 @@ use crate::loader::{get_num_app, init_app_cx};
 use crate::sync::UPSafeCell;
 use lazy_static::*;
 use switch::__switch;
-pub use task::{TaskControlBlock, TaskStatus};
+pub use task::{TaskControlBlock, TaskStatus, SyscallCounter};
 
 pub use context::TaskContext;
 
@@ -54,6 +54,7 @@ lazy_static! {
         let mut tasks = [TaskControlBlock {
             task_cx: TaskContext::zero_init(),
             task_status: TaskStatus::UnInit,
+            syscall_count: SyscallCounter::new(),
         }; MAX_APP_NUM];
         for (i, task) in tasks.iter_mut().enumerate() {
             task.task_cx = TaskContext::goto_restore(init_app_cx(i));
@@ -135,6 +136,23 @@ impl TaskManager {
             panic!("All applications completed!");
         }
     }
+
+}
+
+impl TaskManagerInner {
+    /// increment_syscall_count
+    pub fn increment_syscall_count(&mut self, syscall_id: usize) {
+        self.tasks[self.current_task]
+            .syscall_count
+            .increment(syscall_id);
+    }
+
+    /// get_syscall_count
+    pub fn get_syscall_count(&self, syscall_id: usize) -> usize {
+        self.tasks[self.current_task]
+            .syscall_count
+            .get_count(syscall_id)
+    }
 }
 
 /// Run the first task in task list.
@@ -168,4 +186,14 @@ pub fn suspend_current_and_run_next() {
 pub fn exit_current_and_run_next() {
     mark_current_exited();
     run_next_task();
+}
+
+/// Increment the task counter
+pub fn task_counter_increment(syscall_id: usize) {
+    TASK_MANAGER.inner.exclusive_access().increment_syscall_count(syscall_id);
+}
+
+/// Get task counter
+pub fn get_counter(syscall_id: usize) -> usize {
+    TASK_MANAGER.inner.exclusive_access().get_syscall_count(syscall_id)
 }
